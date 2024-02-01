@@ -19,6 +19,9 @@ def main():
     # Crear la tabla de archivos si no existe
     db.create_db(conn)
 
+    # Limpiar la base de datos antes de insertar los archivos actualizados
+    db.clear_database(conn)
+
     # Listar archivos de Google Drive
     results = drive_service.files().list(pageSize=10,
                                          fields="nextPageToken, files(id, name, owners, webViewLink, modifiedTime)").execute()
