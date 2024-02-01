@@ -10,50 +10,68 @@ from googleapiclient.errors import HttpError
 SCOPES = ["https://www.googleapis.com/auth/drive.metadata.readonly"]
 
 
-def main():
-  """Shows basic usage of the Drive v3 API.
+def drive_conn():
+    """Shows basic usage of the Drive v3 API.
   Prints the names and ids of the first 10 files the user has access to.
   """
-  creds = None
-  # The file token.json stores the user's access and refresh tokens, and is
-  # created automatically when the authorization flow completes for the first
-  # time.
-  if os.path.exists("token.json"):
-    creds = Credentials.from_authorized_user_file("token.json", SCOPES)
-  # If there are no (valid) credentials available, let the user log in.
-  if not creds or not creds.valid:
-    if creds and creds.expired and creds.refresh_token:
-      creds.refresh(Request())
-    else:
-      flow = InstalledAppFlow.from_client_secrets_file(
-          "credentials.json", SCOPES
-      )
-      creds = flow.run_local_server(port=0)
-    # Save the credentials for the next run
-    with open("token.json", "w") as token:
-      token.write(creds.to_json())
+    creds = None
+    # The file token.json stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    if os.path.exists("token.json"):
+        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                "credentials.json", SCOPES
+            )
+            creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
+        with open("token.json", "w") as token:
+            token.write(creds.to_json())
 
-  try:
-    service = build("drive", "v3", credentials=creds)
+    try:
+        service = build("drive", "v3", credentials=creds)
 
-    # Call the Drive v3 API
-    results = (
-        service.files()
-        .list(pageSize=10, fields="nextPageToken, files(id, name)")
-        .execute()
-    )
-    items = results.get("files", [])
+        # Call the Drive v3 API
+        results = (
+            service.files()
+            .list(pageSize=10, fields="nextPageToken, files(id, name, owners, modifiedTime)")
+            .execute()
+        )
+        items = results.get("files", [])
+        print(items)
+        if not items:
+            print("No files found.")
+            return
 
-    if not items:
-      print("No files found.")
-      return
+
+
+    except HttpError as error:
+        # TODO(developer) - Handle errors from drive API.
+        print(f"An error occurred: {error}")
+
+
+def get_files(service):
+    # Listar archivos de Google Drive
     print("Files:")
     for item in items:
-      print(f"{item['name']} ({item['id']})")
-  except HttpError as error:
-    # TODO(developer) - Handle errors from drive API.
-    print(f"An error occurred: {error}")
+        print(f"{item['name']} ({item['id']})")
 
+        # Procesar y guardar archivos en la base de datos
+    for item in items:
+        file_info = {
+            'name': item['name'],
+            'extension': item['name'].split('.')[-1],  # Extraer la extensión del nombre del archivo
+            'owner': item['owners'][0]['displayName'],
+            'visibility': 'public' if 'anyoneWithLink' in item.get('webViewLink', '') else 'private',
+            'last_modified': item['modifiedTime']
+        }
+
+        db.insert_or_update_file(conn, file_info)
 
 if __name__ == "__main__":
-  main()
+    drive_conn()
