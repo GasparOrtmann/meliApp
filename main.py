@@ -1,47 +1,59 @@
+import os
+import smtplib
+from email.mime.text import MIMEText
 from datetime import datetime
-
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+import mysql.connector
 from app import db
+from app import email
 
 
 def main():
-    # Autenticación con la API de Google Drive
-    credentials_file = 'app/token.json'
-    drive_service = db.authenticate(credentials_file)
+    print("Bienvenido a la aplicación de inventario de archivos de Google Drive")
 
-    # Conexión a la base de datos MySQL
-    host = "localhost"
-    username = "root"
-    password = "root"
-    database_name = "drive_inventory_db"
+    try:
+        # Autenticación con Google Drive
+        credentials_file = 'app/token.json'
+        drive_service = db.authenticate(credentials_file)
 
-    conn = db.connect_db(host, username, password)
+        # Conexión con la base de datos
+        host = "localhost"  # input("Por favor, ingresa el host de la base de datos MySQL: ")
+        username = "root"  # input("Por favor, ingresa el nombre de usuario de la base de datos MySQL: ")
+        password = "root"  # input("Por favor, ingresa la contraseña de la base de datos MySQL: ")
+        database = "drive_inventory_db"
+        conn = db.connect_db(host, username, password, database)
+        db.create_db(conn)
 
-    # Crear la tabla de archivos si no existe
-    db.create_db(conn)
+        # Menú de opciones
+        while True:
+            print("\nOpciones disponibles:")
+            print("1. Listar archivos en Google Drive")
+            print("2. Actualizar archivos de Drive en la base de datos")
+            print("3. Cambiar visibilidad de archivos y enviar notificaciones")
+            print("4. Salir")
 
-    # Limpiar la base de datos antes de insertar los archivos actualizados
-    db.clear_database(conn)
+            option = input("Por favor, elige una opción: ")
 
-    # Listar archivos de Google Drive
-    results = drive_service.files().list(pageSize=10,
-                                         fields="nextPageToken, files(id, name, owners, webViewLink, modifiedTime)").execute()
-    items = results.get('files', [])
+            if option == "1":
+                db.list_files_from_db(conn)
+            elif option == "2":
+                db.save_files(drive_service, conn)
+            elif option == "3":
+                email.process_public_files(conn)
+            elif option == "4":
+                print("Saliendo de la aplicación...")
+                break
+            else:
+                print("Opción no válida. Por favor, elige una opción válida.")
 
-    # Procesar y guardar archivos en la base de datos
-    for item in items:
-        file_info = {
-            'name': item['name'],
-            'extension': item['name'].split('.')[-1],  # Extraer la extensión del nombre del archivo
-            'owner': item['owners'][0]['displayName'],
-            'visibility': 'public' if 'anyoneWithLink' in item.get('webViewLink', '') else 'private',
-            'last_modified': datetime.strptime(item['modifiedTime'], '%Y-%m-%dT%H:%M:%S.%fZ').strftime('%Y-%m-%d %H:%M:%S')
-        }
+    except Exception as e:
+        print("Error:", str(e))
 
-        # Insertar o actualizar en la base de datos
-        db.insert_or_update_file(conn, file_info)
-
-    # Cerrar conexión a la base de datos
-    conn.close()
+    finally:
+        # Cierre de la conexión con la base de datos al salir
+        if 'conn' in locals() and conn.is_connected():
+            conn.close()
 
 
 if __name__ == '__main__':
