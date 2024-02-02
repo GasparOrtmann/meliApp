@@ -13,53 +13,6 @@ def authenticate(credentials_file):
     creds = Credentials.from_authorized_user_file(credentials_file)
     return build('drive', 'v3', credentials=creds)
 
-
-def connect_db(host, username, password):
-    # Establece una conexión con la base de datos MySQL.
-    import mysql.connector
-
-    def connect_db(host, username, password, database):
-        try:
-            conn = mysql.connector.connect(
-                host=host,
-                user=username,
-                password=password,
-                database=database
-            )
-            print("Conexión exitosa!")
-            return conn
-        except mysql.connector.Error as err:
-            if err.errno == mysql.connector.errorcode.ER_BAD_DB_ERROR:
-                try:
-                    conn = mysql.connector.connect(
-                        host=host,
-                        user=username,
-                        password=password
-                    )
-                    cursor = conn.cursor()
-                    cursor.execute("CREATE DATABASE {}".format(database))
-                    print("Base de datos creada correctamente!")
-                    conn.database = database
-                    return conn
-                except mysql.connector.Error as err:
-                    print("Error al crear la base de datos: {}".format(err))
-                    return None
-            else:
-                print("Hubo un error con la conexión: ", err)
-                return None
-
-    # Ejemplo de uso
-    host = 'tu_host'
-    username = 'tu_usuario'
-    password = 'tu_contraseña'
-    database = 'tu_base_de_datos'
-
-    conn = connect_db(host, username, password, database)
-
-
-import mysql.connector
-
-
 def connect_db(host, username, password, database):
     try:
         conn = mysql.connector.connect(
@@ -135,6 +88,7 @@ def list_files_from_db(conn):
                     file['id'], file['name'], file['extension'], file['owner'], file['visibility'],
                     file['last_modified']
                 ))
+            return files
     except mysql.connector.Error as err:
         print("Hubo un error al listar los archivos:", err)
     finally:
