@@ -34,31 +34,7 @@ def send_notification_email(owner_email):
     server.quit()
 
 
-def process_public_files(conn):
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM files WHERE visibility = 'public'")
-    public_files = cursor.fetchall()
 
-    if not public_files:
-        print("No se encontraron archivos públicos para modificar.")
-    else:
-        for file in public_files:
-            # Modificar la configuración de visibilidad a "private" en la base de datos
-            try:
-                cursor.execute("UPDATE files SET visibility = 'private' WHERE id = %s", (file['id'],))
-                conn.commit()
-            except Exception as e:
-                print("Error al actualizar la configuración de visibilidad:", e)
-                conn.rollback()
-                continue
-
-            # Enviar un correo electrónico al propietario notificando el cambio realizado
-            owner_email = file['owner_email']
-            subject = "Cambio de visibilidad de archivo en tu unidad de Drive"
-            message = f"Estimado {file['owner']},\n\nEl archivo '{file['name']}' ha sido cambiado de público a privado en tu unidad de Drive."
-            send_notification_email(owner_email)
-
-    cursor.close()
 
 
 

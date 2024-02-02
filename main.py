@@ -36,12 +36,18 @@ def main():
         def handle_actualizar_archivos():
             try:
                 db.save_files(drive_service, conn)
+                db.save_public_files_history(conn)
                 messagebox.showinfo("Actualizar archivos", "Archivos actualizados con éxito")
             except Exception as e:
                 messagebox.showerror("Error", f"Ocurrió un error al actualizar los archivos: {str(e)}")
 
         def handle_cambiar_visibilidad():
+            db.save_public_files_history(conn)
             windows.change_visibility(conn)
+
+        def handle_listar_publicos():
+            windows.show_public_files(conn)
+
 
         # Crear la ventana principal
         root = tk.Tk()
@@ -57,6 +63,9 @@ def main():
 
         btn_visibilidad = tk.Button(root, text="Cambiar visibilidad", command=handle_cambiar_visibilidad)
         btn_visibilidad.pack(pady=5)
+
+        btn_publicos = tk.Button(root, text="Historial de archivos publicos", command=handle_listar_publicos)
+        btn_publicos.pack(pady=5)
 
         btn_salir = tk.Button(root, text="Salir", command=root.quit)
         btn_salir.pack(pady=5)
