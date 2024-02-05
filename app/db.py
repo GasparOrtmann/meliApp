@@ -87,6 +87,26 @@ def create_db(conn):
         print("Hubo un error con la creacion de la base de datos: ", err)
 
 
+def get_visibility(service, file_id):
+    try:
+        # Consulta a la API de Google Drive para obtener los permisos del archivo
+        permissions = service.permissions().list(fileId=file_id, fields="permissions(id, role)").execute()
+
+        # Si hay algún permiso asignado al archivo
+        if 'permissions' in permissions:
+            for perm in permissions['permissions']:
+                # Si hay un permiso con el rol de 'reader', entonces el archivo es público
+                if perm['role'] == 'reader':
+                    return 'public'
+
+        # Si no se encontró un permiso de 'reader', el archivo es privado
+        return 'private'
+
+    except Exception as e:
+        print(f"Error al obtener los permisos del archivo {file_id}:", e)
+        return 'private'
+
+
 def list_files_from_google_drive(service, folder_id='root'):
     try:
         # Consulta específica para obtener archivos y carpetas dentro de una carpeta
@@ -96,7 +116,7 @@ def list_files_from_google_drive(service, folder_id='root'):
         results = service.files().list(q=query, pageSize=10,
                                        fields="nextPageToken, files(id, name, mimeType, owners, webViewLink, modifiedTime)").execute()
         items = results.get('files', [])
-        print("ITEMS",items)
+        print("ITEMS", items)
         if not items:
             print("No hay archivos en Google Drive.")
         else:
@@ -108,7 +128,9 @@ def list_files_from_google_drive(service, folder_id='root'):
                 owner_info = item.get('owners', [{'displayName': 'Propietario_Desconocido'}])
                 owner_name = owner_info[0]['displayName']
                 item['owners'] = owner_name
-                visibility = 'publico' if 'anyoneWithLink' in item.get('webViewLink', '') else 'privado'
+                # Determinar la visibilidad del archivo a partir de los permisos asignados
+                visibility = get_visibility(service, item['id'])
+
                 last_modified = item.get('modifiedTime', 'Desconocida')
 
                 # Agrega el campo visibility al diccionario del elemento actual
@@ -160,44 +182,56 @@ def clear_database(conn):
         print("Hubo un error con la limpieza de la base de datos: ", err)
 
 
-# Guardar archivos nuevos o actualizar existentes
-def save_files(drive_service, conn):
-    cursor = conn.cursor()
-    drive_files = drive_service.files().list(pageSize=10,
-                                             fields="files(id, name, mimeType, owners, webViewLink, modifiedTime)").execute().get(
-        'files', [])
-    for file in drive_files:
-        file_info = {
-            'id': file['id'],
-            'name': file['name'],
-            'extension': file['mimeType'] if file['mimeType'] != 'application/vnd.google-apps.folder' else None,
-            'owner': file['owners'][0]['displayName'],
-            'visibility': 'public' if 'anyoneWithLink' in file.get('webViewLink', '') else 'private',
-            'last_modified': datetime.strptime(file['modifiedTime'], '%Y-%m-%dT%H:%M:%S.%fZ'),
-            'is_directory': file['mimeType'] == 'application/vnd.google-apps.folder'
-        }
 
-        cursor.execute("SELECT id FROM files WHERE id = %s", (file_info['id'],))
-        result = cursor.fetchone()
-        if result:
-            # Archivo existente, actualizar si es necesario
-            cursor.execute("""
-                UPDATE files 
-                SET name = %s, extension = %s, owner = %s, visibility = %s, last_modified = %s, is_directory = %s
-                WHERE id = %s
-            """, (file_info['name'], file_info['extension'], file_info['owner'], file_info['visibility'],
-                  file_info['last_modified'], file_info['is_directory'], file_info['id']))
-        else:
-            # Archivo nuevo, insertar
-            cursor.execute("""
-                INSERT INTO files (id, name, extension, owner, visibility, last_modified, is_directory)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (
-                file_info['id'], file_info['name'], file_info['extension'], file_info['owner'], file_info['visibility'],
-                file_info['last_modified'], file_info['is_directory']))
-        # Guardar cambios
-        conn.commit()
-    cursor.close()
+def save_files(service, conn):
+    cursor = conn.cursor()
+
+    try:
+        # Consulta específica para obtener archivos y carpetas dentro de la raíz
+        query = "'root' in parents and trashed=false"
+
+        # Listar archivos y carpetas de Google Drive
+        results = service.files().list(q=query, pageSize=10,
+                                              fields="files(id, name, mimeType, owners, webViewLink, modifiedTime)").execute()
+        drive_files = results.get('files', [])
+
+        for file in drive_files:
+            file_info = {
+                'id': file['id'],
+                'name': file['name'],
+                'extension': file['mimeType'] if file['mimeType'] != 'application/vnd.google-apps.folder' else None,
+                'owner': file['owners'][0]['displayName'],
+                'visibility': get_visibility(service, file['id']),
+                'last_modified': datetime.strptime(file['modifiedTime'], '%Y-%m-%dT%H:%M:%S.%fZ'),
+                'is_directory': file['mimeType'] == 'application/vnd.google-apps.folder'
+            }
+
+            cursor.execute("SELECT id FROM files WHERE id = %s", (file_info['id'],))
+            result = cursor.fetchone()
+            if result:
+                # Archivo existente, actualizar si es necesario
+                cursor.execute("""
+                    UPDATE files 
+                    SET name = %s, extension = %s, owner = %s, visibility = %s, last_modified = %s, is_directory = %s
+                    WHERE id = %s
+                """, (file_info['name'], file_info['extension'], file_info['owner'], file_info['visibility'],
+                      file_info['last_modified'], file_info['is_directory'], file_info['id']))
+            else:
+                # Archivo nuevo, insertar
+                cursor.execute("""
+                    INSERT INTO files (id, name, extension, owner, visibility, last_modified, is_directory)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    file_info['id'], file_info['name'], file_info['extension'], file_info['owner'], file_info['visibility'],
+                    file_info['last_modified'], file_info['is_directory']))
+            # Guardar cambios
+            conn.commit()
+    except Exception as e:
+        print("Hubo un error al guardar los archivos desde Google Drive:", e)
+        conn.rollback()
+    finally:
+        cursor.close()
+
 
 
 def process_public_files(conn):
@@ -244,3 +278,49 @@ def save_public_files_history(conn):
             print(f"Error al insertar el archivo {file[1]} en el historial:", err)
             conn.rollback()
     cursor.close()
+
+
+# Listar todos los archivos encontrados en la unidad "My Drive".
+def list_allfiles(service, folder_id='root'):
+    all_files = []
+
+    try:
+        # Consulta específica para obtener archivos y carpetas dentro de una carpeta
+        query = f"'{folder_id}' in parents and trashed=false"
+
+        # Listar archivos y carpetas de Google Drive
+        results = service.files().list(q=query, pageSize=10,
+                                       fields="nextPageToken, files(id, name, mimeType, owners, webViewLink, modifiedTime)").execute()
+        items = results.get('files', [])
+
+        if not items:
+            print(f"No hay archivos en la carpeta con ID: {folder_id}.")
+        else:
+            for item in items:
+                # Determinar el propietario del archivo
+                owner_info = item.get('owners', [{'displayName': 'Propietario_Desconocido'}])
+                owner_name = owner_info[0]['displayName']
+
+                # Determinar la visibilidad del archivo
+                visibility = 'publico' if 'anyoneWithLink' in item.get('webViewLink', '') else 'privado'
+
+                # Obtener la última fecha de modificación del archivo
+                last_modified = item.get('modifiedTime', 'Desconocida')
+
+                # Agregar los campos de propietario, visibilidad y última modificación al diccionario del elemento actual
+                item['owners'] = owner_name
+                item['visibility'] = visibility
+                item['last_modified'] = last_modified
+
+                all_files.append(item)
+
+                # Si el elemento es un directorio, explorar sus archivos de manera recursiva
+                if item['mimeType'] == 'application/vnd.google-apps.folder':
+                    subdirectory_files = list_files_from_google_drive(service, folder_id=item['id'])
+                    all_files.extend(subdirectory_files)
+
+        return all_files
+
+    except Exception as e:
+        print(f"Hubo un error al listar los archivos desde la carpeta con ID {folder_id}:", e)
+        return []

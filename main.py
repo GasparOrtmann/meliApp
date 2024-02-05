@@ -6,7 +6,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 import mysql.connector
 from app import db
-from app import email
+from app import drive
 from interface import windows
 import tkinter as tk
 from tkinter import messagebox
@@ -28,6 +28,8 @@ def main():
         conn = db.connect_db(host, username, password, database)
         db.create_db(conn)
 
+        db.process_public_files(conn)
+
         # Menú de opciones
         def handle_listar_archivos():
            windows.show_files(drive_service)
@@ -46,6 +48,7 @@ def main():
             windows.change_visibility(conn)
 
         def handle_listar_publicos():
+            db.save_public_files_history(conn)
             windows.show_public_files(conn)
 
 
