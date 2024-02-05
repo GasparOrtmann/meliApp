@@ -30,7 +30,7 @@ def main():
 
         # Menú de opciones
         def handle_listar_archivos():
-           windows.show_files(conn)
+           windows.show_files(drive_service)
 
 
         def handle_actualizar_archivos():

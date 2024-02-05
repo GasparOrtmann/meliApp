@@ -54,24 +54,5 @@ def drive_conn():
         # TODO(developer) - Handle errors from drive API.
         print(f"An error occurred: {error}")
 
-
-def get_files(service):
-    # Listar archivos de Google Drive
-    print("Files:")
-    for item in items:
-        print(f"{item['name']} ({item['id']})")
-
-        # Procesar y guardar archivos en la base de datos
-    for item in items:
-        file_info = {
-            'name': item['name'],
-            'extension': item['name'].split('.')[-1],  # Extraer la extensión del nombre del archivo
-            'owner': item['owners'][0]['displayName'],
-            'visibility': 'public' if 'anyoneWithLink' in item.get('webViewLink', '') else 'private',
-            'last_modified': item['modifiedTime']
-        }
-
-        db.insert_or_update_file(conn, file_info)
-
 if __name__ == "__main__":
     drive_conn()

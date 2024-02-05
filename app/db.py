@@ -14,6 +14,7 @@ def authenticate(credentials_file):
     creds = Credentials.from_authorized_user_file(credentials_file)
     return build('drive', 'v3', credentials=creds)
 
+
 def connect_db(host, username, password, database):
     try:
         conn = mysql.connector.connect(
@@ -54,15 +55,16 @@ def create_db(conn):
 
         # Crear la tabla de archivos
         cursor.execute("""
-                CREATE TABLE IF NOT EXISTS files (
-                    id VARCHAR(255) PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    extension VARCHAR(255),
-                    owner VARCHAR(255) NOT NULL,
-                    visibility ENUM('public', 'private') NOT NULL,
-                    last_modified DATETIME
-                )
-            """)
+            CREATE TABLE IF NOT EXISTS files (
+                id VARCHAR(255) PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                extension VARCHAR(255),
+                owner VARCHAR(255) NOT NULL,
+                visibility ENUM('public', 'private') NOT NULL,
+                last_modified DATETIME,
+                is_directory BOOLEAN NOT NULL DEFAULT FALSE
+            )
+        """)
 
         # Crear la tabla de historial de archivos públicos
         cursor.execute("""
@@ -85,28 +87,41 @@ def create_db(conn):
         print("Hubo un error con la creacion de la base de datos: ", err)
 
 
-def list_files_from_db(conn):
+def list_files_from_google_drive(service, folder_id='root'):
     try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM files")
-        files = cursor.fetchall()
-        if not files:
-            print("No hay archivos en la base de datos.")
+        # Consulta específica para obtener archivos y carpetas dentro de una carpeta
+        query = f"'{folder_id}' in parents and trashed=false"
+
+        # Listar archivos y carpetas de Google Drive
+        results = service.files().list(q=query, pageSize=10,
+                                       fields="nextPageToken, files(id, name, mimeType, owners, webViewLink, modifiedTime)").execute()
+        items = results.get('files', [])
+        print("ITEMS",items)
+        if not items:
+            print("No hay archivos en Google Drive.")
         else:
             print("{:<50} {:<70} {:<15} {:<30} {:<15} {:<40}".format(
-                "ID", "Nombre", "Extensión", "Propietario", "Visibilidad", "Última Modificación"
+                "ID", "Nombre", "Tipo", "Propietario", "Visibilidad", "Última Modificación"
             ))
             print("-" * 200)
-            for file in files:
+            for item in items:
+                owner_info = item.get('owners', [{'displayName': 'Propietario_Desconocido'}])
+                owner_name = owner_info[0]['displayName']
+                item['owners'] = owner_name
+                visibility = 'publico' if 'anyoneWithLink' in item.get('webViewLink', '') else 'privado'
+                last_modified = item.get('modifiedTime', 'Desconocida')
+
+                # Agrega el campo visibility al diccionario del elemento actual
+                item['visibility'] = visibility
+
                 print("{:<50} {:<70} {:<15} {:<30} {:<15} {:<40}".format(
-                    file['id'], file['name'], file['extension'], file['owner'], file['visibility'],
-                    file['last_modified']
+                    item['id'], item['name'], item['mimeType'], owner_name, visibility, last_modified
                 ))
-            return files
-    except mysql.connector.Error as err:
-        print("Hubo un error al listar los archivos:", err)
-    finally:
-        cursor.close()
+            return items
+
+    except Exception as e:
+        print("Hubo un error al listar los archivos desde Google Drive:", e)
+
 
 def list_public_files_history(conn):
     try:
@@ -149,38 +164,41 @@ def clear_database(conn):
 def save_files(drive_service, conn):
     cursor = conn.cursor()
     drive_files = drive_service.files().list(pageSize=10,
-                                             fields="files(id, name, owners, webViewLink, modifiedTime)").execute().get(
+                                             fields="files(id, name, mimeType, owners, webViewLink, modifiedTime)").execute().get(
         'files', [])
     for file in drive_files:
         file_info = {
             'id': file['id'],
             'name': file['name'],
-            'extension': file['name'].split('.')[-1],  # Obtener la extensión del archivo
+            'extension': file['mimeType'] if file['mimeType'] != 'application/vnd.google-apps.folder' else None,
             'owner': file['owners'][0]['displayName'],
             'visibility': 'public' if 'anyoneWithLink' in file.get('webViewLink', '') else 'private',
-            'last_modified': datetime.strptime(file['modifiedTime'], '%Y-%m-%dT%H:%M:%S.%fZ')
+            'last_modified': datetime.strptime(file['modifiedTime'], '%Y-%m-%dT%H:%M:%S.%fZ'),
+            'is_directory': file['mimeType'] == 'application/vnd.google-apps.folder'
         }
+
         cursor.execute("SELECT id FROM files WHERE id = %s", (file_info['id'],))
         result = cursor.fetchone()
         if result:
             # Archivo existente, actualizar si es necesario
             cursor.execute("""
                 UPDATE files 
-                SET name = %s, extension = %s, owner = %s, visibility = %s, last_modified = %s
+                SET name = %s, extension = %s, owner = %s, visibility = %s, last_modified = %s, is_directory = %s
                 WHERE id = %s
             """, (file_info['name'], file_info['extension'], file_info['owner'], file_info['visibility'],
-                  file_info['last_modified'], file_info['id']))
+                  file_info['last_modified'], file_info['is_directory'], file_info['id']))
         else:
             # Archivo nuevo, insertar
             cursor.execute("""
-                INSERT INTO files (id, name, extension, owner, visibility, last_modified)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO files (id, name, extension, owner, visibility, last_modified, is_directory)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
             """, (
                 file_info['id'], file_info['name'], file_info['extension'], file_info['owner'], file_info['visibility'],
-                file_info['last_modified']))
+                file_info['last_modified'], file_info['is_directory']))
         # Guardar cambios
         conn.commit()
     cursor.close()
+
 
 def process_public_files(conn):
     cursor = conn.cursor(dictionary=True)
@@ -208,6 +226,7 @@ def process_public_files(conn):
 
     cursor.close()
 
+
 # Mantener un inventario histórico de archivos públicos
 def save_public_files_history(conn):
     cursor = conn.cursor()
@@ -225,6 +244,3 @@ def save_public_files_history(conn):
             print(f"Error al insertar el archivo {file[1]} en el historial:", err)
             conn.rollback()
     cursor.close()
-
-
-
