@@ -250,29 +250,16 @@ def change_visibility(service):
 
                 # Cambiar la visibilidad del archivo seleccionado a privado en Google Drive
                 try:
-                    # Obtener el archivo seleccionado
                     selected_file = next((f for f in files if f['id'] == selected_file_id), None)
                     if selected_file:
                         # Verificar si la visibilidad actual es pública
-                        if selected_file['visibility'] == 'public':
+                        if db.detect_visibility(service, selected_file_id) == 'public':
                             # Cambiar la visibilidad del archivo a privado
-                            selected_file['visibility'] = 'private'
-
-                            # Actualizar la visibilidad del archivo en Google Drive
-                            updated_file = service.files().update(
-                                fileId=selected_file_id,
-                                body={'visibility': 'private'},
-                                fields='id'
-                            ).execute()
-
-                            # Verificar si la actualización fue exitosa
-                            if updated_file.get('id') == selected_file_id:
-                                print(f"Visibilidad del archivo '{selected_file_name}' cambiada a privado.")
-                                # Actualizar la lista después del cambio
-                                window_files.destroy()  # Cerrar la ventana actual
-                                change_visibility(service)  # Mostrar la lista actualizada
-                            else:
-                                print(f"Error al cambiar la visibilidad del archivo '{selected_file_name}'.")
+                            db.change_file_visibility(service, selected_file_id)
+                            print(f"Visibilidad del archivo '{selected_file_name}' cambiada a privado.")
+                            # Actualizar la lista después del cambio
+                            visibility = 'private'
+                            tree.set(item, column="Visibilidad", value=visibility)
 
                 except Exception as e:
                     print("Error al cambiar la visibilidad del archivo:", e)
@@ -284,4 +271,7 @@ def change_visibility(service):
 
     except Exception as e:
         print("Error al obtener archivos desde Google Drive:", e)
+
+
+
 

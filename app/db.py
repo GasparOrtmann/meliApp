@@ -22,67 +22,77 @@ def connect_db(host, username, password, database):
             password=password,
             database=database
         )
-        print("Conexión exitosa!")
         return conn
     except mysql.connector.Error as err:
-        if err.errno == mysql.connector.errorcode.ER_BAD_DB_ERROR:
-            try:
-                conn = mysql.connector.connect(
-                    host=host,
-                    user=username,
-                    password=password
-                )
-                cursor = conn.cursor()
-                cursor.execute("CREATE DATABASE {}".format(database))
-                print("Base de datos creada correctamente!")
-                conn.database = database
-                return conn
-            except mysql.connector.Error as err:
-                print("Error al crear la base de datos: {}".format(err))
-                return None
-        else:
-            print("Hubo un error con la conexión: ", err)
-            return None
+        print("Error al crear la base de datos: {}".format(err))
+        return None
 
 
-def create_db(conn):
+def create_db(conn, service):
     try:
-        # Crear la base de datos
+        # Verificar si la base de datos está creada
         cursor = conn.cursor()
-        cursor.execute("CREATE DATABASE IF NOT EXISTS drive_inventory_db")
-        cursor.execute("USE drive_inventory_db")
+        cursor.execute("SHOW DATABASES")
+        databases = [database[0] for database in cursor.fetchall()]
 
-        # Crear la tabla de archivos
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS files (
-                id VARCHAR(255) PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
-                extension VARCHAR(255),
-                owner VARCHAR(255) NOT NULL,
-                visibility ENUM('public', 'private') NOT NULL,
-                last_modified DATETIME
-            )
-        """)
+        if 'drive_inventory_db' not in databases:
+            # Limpiar los archivos en Google Drive
+            clean_google_drive(service)
 
-        # Crear la tabla de historial de archivos públicos
-        cursor.execute("""
-                   CREATE TABLE IF NOT EXISTS public_files_history (
-                       id VARCHAR(255) PRIMARY KEY,
-                       name VARCHAR(255) NOT NULL,
-                       extension VARCHAR(255),
-                       owner VARCHAR(255) NOT NULL,
-                       visibility ENUM('public', 'private') NOT NULL,
-                       last_modified DATETIME
-                   )
-               """)
+            # Crear la base de datos
+            cursor.execute("CREATE DATABASE IF NOT EXISTS drive_inventory_db")
+            cursor.execute("USE drive_inventory_db")
 
-        print("Base de datos y tabla creadas correctamente")
+            # Crear las tablas de archivos y historial de archivos públicos
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS files (
+                    id VARCHAR(255) PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    extension VARCHAR(255),
+                    owner VARCHAR(255) NOT NULL,
+                    visibility ENUM('public', 'private') NOT NULL,
+                    last_modified DATETIME
+                )
+            """)
+            print("Tabla 'files' creada correctamente")
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS public_files_history (
+                    id VARCHAR(255) PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    extension VARCHAR(255),
+                    owner VARCHAR(255) NOT NULL,
+                    visibility ENUM('public', 'private') NOT NULL,
+                    last_modified DATETIME
+                )
+            """)
+            print("Tabla 'public_files_history' creada correctamente")
+
+            print("Base de datos y tablas creadas correctamente")
+
+        else:
+            print("La base de datos ya está creada")
 
         # Cerrar la conexión
         cursor.close()
 
     except mysql.connector.Error as err:
-        print("Hubo un error con la creacion de la base de datos: ", err)
+        print("Hubo un error con la creación de la base de datos: ", err)
+
+
+def clean_google_drive(service):
+    try:
+        # Obtener la lista de archivos de Google Drive
+        results = service.files().list(fields="files(id, name)").execute()
+        files = results.get('files', [])
+
+        # Eliminar cada archivo de Google Drive
+        for file in files:
+            service.files().delete(fileId=file['id']).execute()
+
+        print("Archivos en Google Drive eliminados correctamente")
+
+    except Exception as e:
+        print("Error al limpiar los archivos en Google Drive: ", e)
 
 
 def list_files_from_google_drive(service, folder_id='root'):
@@ -99,10 +109,10 @@ def list_files_from_google_drive(service, folder_id='root'):
         if not items:
             print("No hay archivos en Google Drive.")
         else:
-            print("{:<50} {:<70} {:<15} {:<30} {:<15} {:<40}".format(
-                "ID", "Nombre", "Tipo", "Propietario", "Visibilidad", "Última Modificación"
-            ))
-            print("-" * 200)
+            # print("{:<50} {:<70} {:<15} {:<30} {:<15} {:<40}".format(
+            #     "ID", "Nombre", "Tipo", "Propietario", "Visibilidad", "Última Modificación"
+            # ))
+            # print("-" * 200)
             for item in items:
                 owner_info = item.get('owners', [{'displayName': 'Propietario_Desconocido'}])
                 owner_name = owner_info[0]['displayName']
@@ -220,6 +230,20 @@ def detect_visibility(service, file_id):
     except Exception as e:
         print(f"Error al obtener los permisos del archivo {file_id}: {e}")
         return 'private'
+
+
+def change_file_visibility(service, file_id):
+    try:
+        # Eliminamos el permiso público existente si existe
+        permissions = service.permissions().list(fileId=file_id).execute()
+        for permission in permissions.get('permissions', []):
+            if permission['type'] == 'anyone' and permission['role'] == 'reader':
+                service.permissions().delete(fileId=file_id, permissionId=permission['id']).execute()
+                print(f"Visibilidad del archivo con ID {file_id} cambiada a privado.")
+                return
+        print(f"El archivo con ID {file_id} ya es privado.")
+    except Exception as e:
+        print(f"Error al cambiar la visibilidad del archivo con ID {file_id}: {e}")
 
 
 def process_public_files(conn):

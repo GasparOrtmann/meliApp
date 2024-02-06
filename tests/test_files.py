@@ -63,5 +63,14 @@ def create_files(service):
             # Crear el archivo
             file = service.files().create(body=file_metadata, fields='id').execute()
             print(f"Test file created: {file_name} (ID: {file.get('id')})")
+
+            # Si la visibilidad es pública, asignar permisos de lectura
+            if file_metadata['visibility'] == 'public':
+                permission = {
+                    'type': 'anyone',
+                    'role': 'reader'
+                }
+                service.permissions().create(fileId=file['id'], body=permission).execute()
+                print(f"Se asignaron permisos de lectura al archivo {file_name}.")
         else:
-            print(f"El archivo {file_name} ya existe, no se ha creado.")
+            print(f"El archivo {file_name} ya existe, no se ha creado ni modificado.")

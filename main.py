@@ -32,11 +32,11 @@ def main():
     conn = db.connect_db(host, username, password, database)
 
     # Crear database
-    db.create_db(conn)
+    db.create_db(conn, drive_service)
     # Crear archivos de prueba
     test_files.create_files(drive_service)
     # Sincronizar base de datos con Drive
-    #db.sync_db(drive_service, conn)
+    db.sync_db(drive_service, conn)
     # Guardar archivos publicos
     db.save_public_files_history(conn)
 
