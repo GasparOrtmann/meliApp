@@ -7,7 +7,6 @@ from email.mime.text import MIMEText
 from datetime import datetime
 
 
-
 def authenticate(credentials_file):
     # Autenticación con la API de Google Drive utilizando las credenciales proporcionadas.
 
@@ -61,8 +60,7 @@ def create_db(conn):
                 extension VARCHAR(255),
                 owner VARCHAR(255) NOT NULL,
                 visibility ENUM('public', 'private') NOT NULL,
-                last_modified DATETIME,
-                is_directory BOOLEAN NOT NULL DEFAULT FALSE
+                last_modified DATETIME
             )
         """)
 
@@ -87,26 +85,6 @@ def create_db(conn):
         print("Hubo un error con la creacion de la base de datos: ", err)
 
 
-def get_visibility(service, file_id):
-    try:
-        # Consulta a la API de Google Drive para obtener los permisos del archivo
-        permissions = service.permissions().list(fileId=file_id, fields="permissions(id, role)").execute()
-
-        # Si hay algún permiso asignado al archivo
-        if 'permissions' in permissions:
-            for perm in permissions['permissions']:
-                # Si hay un permiso con el rol de 'reader', entonces el archivo es público
-                if perm['role'] == 'reader':
-                    return 'public'
-
-        # Si no se encontró un permiso de 'reader', el archivo es privado
-        return 'private'
-
-    except Exception as e:
-        print(f"Error al obtener los permisos del archivo {file_id}:", e)
-        return 'private'
-
-
 def list_files_from_google_drive(service, folder_id='root'):
     try:
         # Consulta específica para obtener archivos y carpetas dentro de una carpeta
@@ -114,9 +92,10 @@ def list_files_from_google_drive(service, folder_id='root'):
 
         # Listar archivos y carpetas de Google Drive
         results = service.files().list(q=query, pageSize=10,
-                                       fields="nextPageToken, files(id, name, mimeType, owners, webViewLink, modifiedTime)").execute()
+                                       fields="nextPageToken, files(id, name, mimeType, owners, webViewLink, "
+                                              "modifiedTime)").execute()
         items = results.get('files', [])
-        #print("ITEMS", items)
+        # print("ITEMS", items)
         if not items:
             print("No hay archivos en Google Drive.")
         else:
@@ -128,21 +107,27 @@ def list_files_from_google_drive(service, folder_id='root'):
                 owner_info = item.get('owners', [{'displayName': 'Propietario_Desconocido'}])
                 owner_name = owner_info[0]['displayName']
                 item['owners'] = owner_name
-                # Determinar la visibilidad del archivo a partir de los permisos asignados
-                visibility = get_visibility(service, item['id'])
-
-                last_modified = item.get('modifiedTime', 'Desconocida')
-
-                # Agrega el campo visibility al diccionario del elemento actual
-                item['visibility'] = visibility
+                visibility = detect_visibility(service, item.get('id'))
+                modifiedTime = item.get('modifiedTime', 'Desconocida')
 
                 print("{:<50} {:<70} {:<15} {:<30} {:<15} {:<40}".format(
-                    item['id'], item['name'], item['mimeType'], owner_name, visibility, last_modified
+                    item['id'], item['name'], item['mimeType'], owner_name, visibility, modifiedTime
                 ))
             return items
 
     except Exception as e:
         print("Hubo un error al listar los archivos desde Google Drive:", e)
+
+
+def get_files(conn):
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM files")
+        files = cursor.fetchall()
+        return files
+    except mysql.connector.Error as err:
+        print(f"Error al recuperar archivos de la base de datos: {err}")
+        return []
 
 
 def list_public_files_history(conn):
@@ -169,68 +154,72 @@ def list_public_files_history(conn):
         cursor.close()
 
 
-# Limpiar la base de datos
-def clear_database(conn):
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM files")
-        conn.commit()
-        cursor.close()
-        print("Base de datos limpiada correctamente")
-
-    except mysql.connector.Error as err:
-        print("Hubo un error con la limpieza de la base de datos: ", err)
-
-
-def save_files(service, conn):
+def sync_db(service, conn):
     cursor = conn.cursor()
 
     try:
-        # Consulta específica para obtener archivos y carpetas dentro de la raíz
-        query = "'root' in parents and trashed=false"
+        # Delete existing files in the database
+        cursor.execute("DELETE FROM files")
 
-        # Listar archivos y carpetas de Google Drive
-        results = service.files().list(q=query, pageSize=10,
-                                       fields="files(id, name, mimeType, owners, webViewLink, modifiedTime)").execute()
-        drive_files = results.get('files', [])
+        # Get files from Google Drive
+        files = list_files_from_google_drive(service)
+        # Insert files into the database
+        for file in files:
+            file_id = file['id']
+            file_name = file['name'].rsplit('.', 1)[0]  # Eliminar la extensión del nombre del archivo
+            file_extension = file['mimeType'].rsplit('/', 1)[1]
+            file_owner = file['owners'].split('@')[0]
 
-        for file in drive_files:
-            file_info = {
-                'id': file['id'],
-                'name': file['name'],
-                'extension': file['mimeType'] if file['mimeType'] != 'application/vnd.google-apps.folder' else None,
-                'owner': file['owners'][0]['displayName'],
-                'visibility': get_visibility(service, file['id']),
-                'last_modified': datetime.strptime(file['modifiedTime'], '%Y-%m-%dT%H:%M:%S.%fZ'),
-                'is_directory': file['mimeType'] == 'application/vnd.google-apps.folder'
-            }
-
-            cursor.execute("SELECT id FROM files WHERE id = %s", (file_info['id'],))
-            result = cursor.fetchone()
-            if result:
-                # Archivo existente, actualizar si es necesario
-                cursor.execute("""
-                    UPDATE files 
-                    SET name = %s, extension = %s, owner = %s, visibility = %s, last_modified = %s, is_directory = %s
-                    WHERE id = %s
-                """, (file_info['name'], file_info['extension'], file_info['owner'], file_info['visibility'],
-                      file_info['last_modified'], file_info['is_directory'], file_info['id']))
+            # Obtener la fecha y hora actual en el formato correcto si 'modifiedTime' está disponible
+            if 'modifiedTime' in file and file['modifiedTime']:
+                modified_time_str = file['modifiedTime']
+                modified_time_obj = datetime.strptime(modified_time_str, '%Y-%m-%dT%H:%M:%S.%fZ')
+                file_last_modified = modified_time_obj.strftime('%Y-%m-%d %H:%M:%S')
             else:
-                # Archivo nuevo, insertar
+                # Asignar un valor predeterminado si no hay 'modifiedTime'
+                file_last_modified = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # Determinar visibilidad según permisos
+            file_visibility = detect_visibility(service, file['id'])
+
+            try:
                 cursor.execute("""
-                    INSERT INTO files (id, name, extension, owner, visibility, last_modified, is_directory)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    file_info['id'], file_info['name'], file_info['extension'], file_info['owner'],
-                    file_info['visibility'],
-                    file_info['last_modified'], file_info['is_directory']))
-            # Guardar cambios
-            conn.commit()
+                      INSERT INTO files (id, name, extension, owner, visibility, last_modified)
+                      VALUES (%s, %s, %s, %s, %s, %s)
+                  """, (file_id, file_name, file_extension, file_owner, file_visibility, file_last_modified))
+                conn.commit()
+                print(f"Archivo sincronizado: {file_name}")
+            except mysql.connector.Error as err:
+                print(f"Error al insertar el archivo {file_name} en la base de datos: {err}")
+                conn.rollback()
+
+        print("Sincronización de archivos y base de datos completada.")
+
     except Exception as e:
-        print("Hubo un error al guardar los archivos desde Google Drive:", e)
+        print("Error al sincronizar archivos y base de datos:", e)
         conn.rollback()
+
     finally:
         cursor.close()
+
+
+def detect_visibility(service, file_id):
+    try:
+        # Consultar la API de Google Drive para obtener los permisos del archivo
+        permissions = service.permissions().list(fileId=file_id, fields="permissions(role)").execute()
+
+        # Verificar si hay algún permiso que indique que el archivo es público
+        for permission in permissions.get('permissions', []):
+            role = permission.get('role')
+            if role == 'reader':
+                return 'public'
+
+        # Si no se encuentra ningún permiso de 'reader', el archivo es privado
+        return 'private'
+
+    except Exception as e:
+        print(f"Error al obtener los permisos del archivo {file_id}: {e}")
+        return 'private'
 
 
 def process_public_files(conn):

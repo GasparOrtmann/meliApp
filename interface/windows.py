@@ -4,9 +4,9 @@ from tkinter import messagebox
 from app import db
 
 
-def show_files(service):
+def show_files(conn,service):
     # Obtener archivos y carpetas de Google Drive
-    files = db.list_files_from_google_drive(service)
+    files = db.get_files(conn)
 
     if not files:
         messagebox.showinfo("Listar archivos", "No se encontraron archivos en Google Drive")
@@ -57,19 +57,18 @@ def show_files(service):
             directory_node = tree.insert("", tk.END, text=file["id"], values=(
                 file["name"],
                 "",  # No se muestra la extensión para los directorios
-                file["owners"],
+                file["owner"],
                 file["visibility"],
-                file["modifiedTime"]
+                file["last_modified"]
             ), open=False)
         else:
-            # Obtener la extensión del archivo si está disponible
-            extension = file["mimeType"].split(".")[-1] if "." in file["mimeType"] else ""
+            visibility = db.detect_visibility(service, file["id"])
             tree.insert("", tk.END, text=file["id"], values=(
                 file["name"],
-                extension,
-                file["owners"],
-                file.get("visibility", "Desconocido"),
-                file.get("modifiedTime", "Desconocida")
+                file["extension"],
+                file["owner"],
+                visibility,
+                file.get("last_modified", "Desconocida")
             ))
 
     # Asignar evento de doble clic para mostrar el contenido del directorio
@@ -193,11 +192,9 @@ def show_public_files(conn):
     if files:
         for file in files:
             print(file)
-            # Obtener la extensión del archivo si está disponible
-            extension = file["extension"].split(".")[-1] if "." in file["extension"] else ""
             tree.insert("", tk.END, text=file["id"], values=(
                 file["name"],
-                extension,
+                file["extension"],
                 file["owner"],
                 file.get("visibility", "Desconocido"),
                 file.get("last_modified", "Desconocida")
@@ -238,8 +235,9 @@ def change_visibility(service):
             tree.column("Última Modificación", width=150, anchor=tk.W, stretch=tk.YES)
 
             for file in files:
+                visibility = db.detect_visibility(service, file["id"])
                 tree.insert("", "end", text=file['id'],
-                            values=(file['name'], file['owners'], file['visibility'], file['modifiedTime']))
+                            values=(file['name'], file['owners'], visibility, file['modifiedTime']))
 
             tree.pack(fill=tk.BOTH, expand=True)
 

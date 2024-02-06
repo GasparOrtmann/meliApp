@@ -10,10 +10,10 @@ import tkinter as tk
 from tkinter import messagebox
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from tests import test_files
 
 
 def main():
-    # print("Bienvenido a la aplicación de inventario de archivos de Google Drive")
 
     # Cargar la clave de API desde el archivo JSON
     credentials = service_account.Credentials.from_service_account_file(
@@ -24,23 +24,25 @@ def main():
     # Construir el servicio de Google Drive
     drive_service = build('drive', 'v3', credentials=credentials)
 
-    # Autenticación con Google Drive
-    #credentials_file = 'app/token.json'
-    #drive_service = db.authenticate(credentials_file)
-
     # Conexión con la base de datos
     host = "localhost"  # input("Por favor, ingresa el host de la base de datos MySQL: ")
     username = "root"  # input("Por favor, ingresa el nombre de usuario de la base de datos MySQL: ")
     password = "root"  # input("Por favor, ingresa la contraseña de la base de datos MySQL: ")
     database = "drive_inventory_db"
     conn = db.connect_db(host, username, password, database)
-    db.create_db(conn)
 
+    # Crear database
+    db.create_db(conn)
+    # Crear archivos de prueba
+    test_files.create_files(drive_service)
+    # Sincronizar base de datos con Drive
+    #db.sync_db(drive_service, conn)
+    # Guardar archivos publicos
     db.save_public_files_history(conn)
 
     # Menú de opciones
     def handle_listar_archivos():
-        windows.show_files(drive_service)
+        windows.show_files(conn,drive_service)
 
     def handle_actualizar_archivos():
         try:
