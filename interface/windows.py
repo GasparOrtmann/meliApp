@@ -260,6 +260,7 @@ def change_visibility(service):
                             # Actualizar la lista después del cambio
                             visibility = 'private'
                             tree.set(item, column="Visibilidad", value=visibility)
+                            tk.messagebox.showinfo("Visibilidad", "El archivo cambio a publico correctamente.")
 
                 except Exception as e:
                     print("Error al cambiar la visibilidad del archivo:", e)

@@ -5,6 +5,7 @@ import mysql.connector
 import smtplib
 from email.mime.text import MIMEText
 from datetime import datetime
+import tkinter as tk
 
 
 def authenticate(credentials_file):
@@ -16,6 +17,7 @@ def authenticate(credentials_file):
 
 def connect_db(host, username, password, database):
     try:
+        # Intenta conectar a la base de datos
         conn = mysql.connector.connect(
             host=host,
             user=username,
@@ -23,10 +25,41 @@ def connect_db(host, username, password, database):
             database=database
         )
         return conn
-    except mysql.connector.Error as err:
-        print("Error al crear la base de datos: {}".format(err))
-        return None
 
+    except mysql.connector.Error as err:
+        # Si hay un error de conexión
+        if err.errno == mysql.connector.errorcode.ER_BAD_DB_ERROR:
+            try:
+                # Intenta crear la base de datos
+                conn = mysql.connector.connect(
+                    host=host,
+                    user=username,
+                    password=password
+                )
+                cursor = conn.cursor()
+                cursor.execute("CREATE DATABASE {} DEFAULT CHARACTER SET 'utf8'".format(database))
+                cursor.close()
+                conn.close()
+
+                # Intenta conectar nuevamente después de crear la base de datos
+                conn = mysql.connector.connect(
+                    host=host,
+                    user=username,
+                    password=password,
+                    database=database
+                )
+                return conn
+
+            except mysql.connector.Error as err:
+                print("Error al crear la base de datos: {}".format(err))
+                return None
+        else:
+            # Si hay otro tipo de error de conexión
+            print("Error al conectar a la base de datos: {}".format(err))
+            return None
+
+
+import mysql.connector
 
 def create_db(conn, service):
     try:
@@ -35,48 +68,54 @@ def create_db(conn, service):
         cursor.execute("SHOW DATABASES")
         databases = [database[0] for database in cursor.fetchall()]
 
-        if 'drive_inventory_db' not in databases:
-            # Limpiar los archivos en Google Drive
-            clean_google_drive(service)
-
-            # Crear la base de datos
-            cursor.execute("CREATE DATABASE IF NOT EXISTS drive_inventory_db")
+        if 'drive_inventory_db' in databases:
+            # La base de datos existe, verificar si tiene tablas
             cursor.execute("USE drive_inventory_db")
+            cursor.execute("SHOW TABLES")
+            tables = [table[0] for table in cursor.fetchall()]
 
-            # Crear las tablas de archivos y historial de archivos públicos
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS files (
-                    id VARCHAR(255) PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    extension VARCHAR(255),
-                    owner VARCHAR(255) NOT NULL,
-                    visibility ENUM('public', 'private') NOT NULL,
-                    last_modified DATETIME
-                )
-            """)
-            print("Tabla 'files' creada correctamente")
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS public_files_history (
-                    id VARCHAR(255) PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    extension VARCHAR(255),
-                    owner VARCHAR(255) NOT NULL,
-                    visibility ENUM('public', 'private') NOT NULL,
-                    last_modified DATETIME
-                )
-            """)
-            print("Tabla 'public_files_history' creada correctamente")
+            if 'files' not in tables or 'public_files_history' not in tables:
+                # Limpiar los archivos en Google Drive
+                clean_google_drive(service)
 
-            print("Base de datos y tablas creadas correctamente")
+                # Crear las tablas de archivos y historial de archivos públicos
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS files (
+                        id VARCHAR(255) PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        extension VARCHAR(255),
+                        owner VARCHAR(255) NOT NULL,
+                        visibility ENUM('public', 'private') NOT NULL,
+                        last_modified DATETIME
+                    )
+                """)
+                print("Tabla 'files' creada correctamente")
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS public_files_history (
+                        id VARCHAR(255) PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        extension VARCHAR(255),
+                        owner VARCHAR(255) NOT NULL,
+                        visibility ENUM('public', 'private') NOT NULL,
+                        last_modified DATETIME
+                    )
+                """)
+                print("Tabla 'public_files_history' creada correctamente")
+
+                print("Base de datos y tablas creadas correctamente")
+
+            else:
+                print("La base de datos ya tiene las tablas 'files' y 'public_files_history'")
 
         else:
-            print("La base de datos ya está creada")
+            print("La base de datos 'drive_inventory_db' no existe")
 
         # Cerrar la conexión
         cursor.close()
 
     except mysql.connector.Error as err:
         print("Hubo un error con la creación de la base de datos: ", err)
+
 
 
 def clean_google_drive(service):
@@ -204,9 +243,11 @@ def sync_db(service, conn):
                 conn.rollback()
 
         print("Sincronización de archivos y base de datos completada.")
+        tk.messagebox.showinfo("Sincronización", "Sincronización de archivos y base de datos completada.")
 
     except Exception as e:
         print("Error al sincronizar archivos y base de datos:", e)
+        tk.messagebox.showinfo("Error al sincronizar archivos y base de datos.")
         conn.rollback()
 
     finally:

@@ -45,16 +45,13 @@ def main():
         windows.show_files(conn,drive_service)
 
     def handle_actualizar_archivos():
-        try:
-            db.save_files(drive_service, conn)
-            db.save_public_files_history(conn)
-            messagebox.showinfo("Actualizar archivos", "Archivos actualizados con éxito")
-        except Exception as e:
-            messagebox.showerror("Error", f"Ocurrió un error al actualizar los archivos: {str(e)}")
+        db.sync_db(drive_service, conn)
+
 
     def handle_cambiar_visibilidad():
         db.save_public_files_history(conn)
         windows.change_visibility(drive_service)
+
 
     def handle_listar_publicos():
         db.save_public_files_history(conn)
@@ -69,10 +66,10 @@ def main():
     btn_listar = tk.Button(root, text="Listar archivos", command=handle_listar_archivos)
     btn_listar.pack(pady=5)
 
-    btn_actualizar = tk.Button(root, text="Actualizar archivos", command=handle_actualizar_archivos)
+    btn_actualizar = tk.Button(root, text="Sincronizar archivos", command=handle_actualizar_archivos)
     btn_actualizar.pack(pady=5)
 
-    btn_visibilidad = tk.Button(root, text="Cambiar visibilidad", command=handle_cambiar_visibilidad)
+    btn_visibilidad = tk.Button(root, text="Cambiar visibilidad a privado", command=handle_cambiar_visibilidad)
     btn_visibilidad.pack(pady=5)
 
     btn_publicos = tk.Button(root, text="Historial de archivos publicos", command=handle_listar_publicos)
