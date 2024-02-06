@@ -1,87 +1,94 @@
 import os
 import smtplib
-from email.mime.text import MIMEText
 from datetime import datetime
 from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
 import mysql.connector
 from app import db
 from app import drive
 from interface import windows
 import tkinter as tk
 from tkinter import messagebox
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 
 
 def main():
-    #print("Bienvenido a la aplicación de inventario de archivos de Google Drive")
+    # print("Bienvenido a la aplicación de inventario de archivos de Google Drive")
 
-    #try:
-        # Autenticación con Google Drive
-        credentials_file = 'app/token.json'
-        drive_service = db.authenticate(credentials_file)
+    # Cargar la clave de API desde el archivo JSON
+    credentials = service_account.Credentials.from_service_account_file(
+        'app/credentials.json',
+        scopes=['https://www.googleapis.com/auth/drive']
+    )
 
-        # Conexión con la base de datos
-        host = "localhost"  # input("Por favor, ingresa el host de la base de datos MySQL: ")
-        username = "root"  # input("Por favor, ingresa el nombre de usuario de la base de datos MySQL: ")
-        password = "root"  # input("Por favor, ingresa la contraseña de la base de datos MySQL: ")
-        database = "drive_inventory_db"
-        conn = db.connect_db(host, username, password, database)
-        db.create_db(conn)
+    # Construir el servicio de Google Drive
+    drive_service = build('drive', 'v3', credentials=credentials)
 
-        db.process_public_files(conn)
+    # Autenticación con Google Drive
+    #credentials_file = 'app/token.json'
+    #drive_service = db.authenticate(credentials_file)
 
-        # Menú de opciones
-        def handle_listar_archivos():
-           windows.show_files(drive_service)
+    # Conexión con la base de datos
+    host = "localhost"  # input("Por favor, ingresa el host de la base de datos MySQL: ")
+    username = "root"  # input("Por favor, ingresa el nombre de usuario de la base de datos MySQL: ")
+    password = "root"  # input("Por favor, ingresa la contraseña de la base de datos MySQL: ")
+    database = "drive_inventory_db"
+    conn = db.connect_db(host, username, password, database)
+    db.create_db(conn)
 
+    db.save_public_files_history(conn)
 
-        def handle_actualizar_archivos():
-            try:
-                db.save_files(drive_service, conn)
-                db.save_public_files_history(conn)
-                messagebox.showinfo("Actualizar archivos", "Archivos actualizados con éxito")
-            except Exception as e:
-                messagebox.showerror("Error", f"Ocurrió un error al actualizar los archivos: {str(e)}")
+    # Menú de opciones
+    def handle_listar_archivos():
+        windows.show_files(drive_service)
 
-        def handle_cambiar_visibilidad():
+    def handle_actualizar_archivos():
+        try:
+            db.save_files(drive_service, conn)
             db.save_public_files_history(conn)
-            windows.change_visibility(conn)
+            messagebox.showinfo("Actualizar archivos", "Archivos actualizados con éxito")
+        except Exception as e:
+            messagebox.showerror("Error", f"Ocurrió un error al actualizar los archivos: {str(e)}")
 
-        def handle_listar_publicos():
-            db.save_public_files_history(conn)
-            windows.show_public_files(conn)
+    def handle_cambiar_visibilidad():
+        db.save_public_files_history(conn)
+        windows.change_visibility(drive_service)
+
+    def handle_listar_publicos():
+        db.save_public_files_history(conn)
+        windows.show_public_files(conn)
+
+    # Crear la ventana principal
+    root = tk.Tk()
+    root.title("Inventario de archivos de Google Drive")
+    root.geometry("600x400")
+
+    # Crear botones para las diferentes opciones
+    btn_listar = tk.Button(root, text="Listar archivos", command=handle_listar_archivos)
+    btn_listar.pack(pady=5)
+
+    btn_actualizar = tk.Button(root, text="Actualizar archivos", command=handle_actualizar_archivos)
+    btn_actualizar.pack(pady=5)
+
+    btn_visibilidad = tk.Button(root, text="Cambiar visibilidad", command=handle_cambiar_visibilidad)
+    btn_visibilidad.pack(pady=5)
+
+    btn_publicos = tk.Button(root, text="Historial de archivos publicos", command=handle_listar_publicos)
+    btn_publicos.pack(pady=5)
+
+    btn_salir = tk.Button(root, text="Salir", command=root.quit)
+    btn_salir.pack(pady=5)
+
+    root.mainloop()
 
 
-        # Crear la ventana principal
-        root = tk.Tk()
-        root.title("Inventario de archivos de Google Drive")
-        root.geometry("600x400")
+# except Exception as e:
+#    print("Error:", str(e))
 
-        # Crear botones para las diferentes opciones
-        btn_listar = tk.Button(root, text="Listar archivos", command=handle_listar_archivos)
-        btn_listar.pack(pady=5)
-
-        btn_actualizar = tk.Button(root, text="Actualizar archivos", command=handle_actualizar_archivos)
-        btn_actualizar.pack(pady=5)
-
-        btn_visibilidad = tk.Button(root, text="Cambiar visibilidad", command=handle_cambiar_visibilidad)
-        btn_visibilidad.pack(pady=5)
-
-        btn_publicos = tk.Button(root, text="Historial de archivos publicos", command=handle_listar_publicos)
-        btn_publicos.pack(pady=5)
-
-        btn_salir = tk.Button(root, text="Salir", command=root.quit)
-        btn_salir.pack(pady=5)
-
-        root.mainloop()
-
-    #except Exception as e:
-    #    print("Error:", str(e))
-
-   # finally:
-        # Cierre de la conexión con la base de datos al salir
-   #     if 'conn' in locals() and conn.is_connected():
-   #         conn.close()
+# finally:
+# Cierre de la conexión con la base de datos al salir
+#     if 'conn' in locals() and conn.is_connected():
+#         conn.close()
 
 
 if __name__ == '__main__':

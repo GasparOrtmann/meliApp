@@ -5,7 +5,7 @@ import mysql.connector
 import smtplib
 from email.mime.text import MIMEText
 from datetime import datetime
-from app import email
+
 
 
 def authenticate(credentials_file):
@@ -116,7 +116,7 @@ def list_files_from_google_drive(service, folder_id='root'):
         results = service.files().list(q=query, pageSize=10,
                                        fields="nextPageToken, files(id, name, mimeType, owners, webViewLink, modifiedTime)").execute()
         items = results.get('files', [])
-        print("ITEMS", items)
+        #print("ITEMS", items)
         if not items:
             print("No hay archivos en Google Drive.")
         else:
@@ -182,7 +182,6 @@ def clear_database(conn):
         print("Hubo un error con la limpieza de la base de datos: ", err)
 
 
-
 def save_files(service, conn):
     cursor = conn.cursor()
 
@@ -192,7 +191,7 @@ def save_files(service, conn):
 
         # Listar archivos y carpetas de Google Drive
         results = service.files().list(q=query, pageSize=10,
-                                              fields="files(id, name, mimeType, owners, webViewLink, modifiedTime)").execute()
+                                       fields="files(id, name, mimeType, owners, webViewLink, modifiedTime)").execute()
         drive_files = results.get('files', [])
 
         for file in drive_files:
@@ -222,7 +221,8 @@ def save_files(service, conn):
                     INSERT INTO files (id, name, extension, owner, visibility, last_modified, is_directory)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """, (
-                    file_info['id'], file_info['name'], file_info['extension'], file_info['owner'], file_info['visibility'],
+                    file_info['id'], file_info['name'], file_info['extension'], file_info['owner'],
+                    file_info['visibility'],
                     file_info['last_modified'], file_info['is_directory']))
             # Guardar cambios
             conn.commit()
@@ -231,7 +231,6 @@ def save_files(service, conn):
         conn.rollback()
     finally:
         cursor.close()
-
 
 
 def process_public_files(conn):

@@ -5,6 +5,14 @@ from app import db
 
 
 def show_files(service):
+    # Obtener archivos y carpetas de Google Drive
+    files = db.list_files_from_google_drive(service)
+
+    if not files:
+        messagebox.showinfo("Listar archivos", "No se encontraron archivos en Google Drive")
+        return  # Salir de la función si no hay archivos
+
+    # Crear la ventana y el árbol solo si hay archivos
     window_files = tk.Toplevel()
     window_files.title("Archivos en Google Drive")
     window_files.geometry("1000x400")  # Establecer tamaño inicial de la ventana
@@ -14,7 +22,7 @@ def show_files(service):
     frame.pack(fill=tk.BOTH, expand=True)
 
     # Crear un treeview para mostrar los archivos
-    tree = ttk.Treeview(frame, columns=("Nombre", "Propietario", "Visibilidad", "Última Modificación"))
+    tree = ttk.Treeview(frame, columns=("Nombre", "Extensión", "Propietario", "Visibilidad", "Última Modificación"))
 
     # Agregar scrollbars
     y_scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
@@ -29,6 +37,7 @@ def show_files(service):
     # Definir encabezados de columnas
     tree.heading("#0", text="ID")
     tree.heading("Nombre", text="Nombre")
+    tree.heading("Extensión", text="Extensión")
     tree.heading("Propietario", text="Propietario")
     tree.heading("Visibilidad", text="Visibilidad")
     tree.heading("Última Modificación", text="Última Modificación")
@@ -36,35 +45,35 @@ def show_files(service):
     # Definir anchuras de columnas
     tree.column("#0", width=350)
     tree.column("Nombre", width=200)
+    tree.column("Extensión", width=100)  # Ancho ajustable según la extensión
     tree.column("Propietario", width=150)
     tree.column("Visibilidad", width=100)
     tree.column("Última Modificación", width=200)
 
-    # Obtener archivos y carpetas de Google Drive
-    files = db.list_files_from_google_drive(service)
-    if files:
-        for file in files:
-            if file.get("is_directory"):
-                directory_id = file["id"]
-                directory_node = tree.insert("", tk.END, text=file["id"], values=(
-                    file["name"],
-                    file["owners"],
-                    file["visibility"],
-                    file["modifiedTime"]
-                ), open=False)
-            else:
-                tree.insert("", tk.END, text=file["id"], values=(
-                    file["name"],
-                    file["owners"],
-                    file.get("visibility", "Desconocido"),
-                    file.get("modifiedTime", "Desconocida")
-                ))
-
-    else:
-        messagebox.showinfo("Listar archivos", "No se encontraron archivos en Google Drive")
+    # Insertar archivos en el treeview
+    for file in files:
+        if file.get("is_directory"):
+            directory_id = file["id"]
+            directory_node = tree.insert("", tk.END, text=file["id"], values=(
+                file["name"],
+                "",  # No se muestra la extensión para los directorios
+                file["owners"],
+                file["visibility"],
+                file["modifiedTime"]
+            ), open=False)
+        else:
+            # Obtener la extensión del archivo si está disponible
+            extension = file["mimeType"].split(".")[-1] if "." in file["mimeType"] else ""
+            tree.insert("", tk.END, text=file["id"], values=(
+                file["name"],
+                extension,
+                file["owners"],
+                file.get("visibility", "Desconocido"),
+                file.get("modifiedTime", "Desconocida")
+            ))
 
     # Asignar evento de doble clic para mostrar el contenido del directorio
-    tree.bind("<Double-1>", lambda event: show_directory_contents(event, tree, service))
+    # tree.bind("<Double-1>", lambda event: show_directory_contents(event, tree, service))
 
 
 def show_directory_contents(event, tree, service):
@@ -142,7 +151,6 @@ def list_directory_contents(service, directory_id):
 
 def show_public_files(conn):
     files = db.list_public_files_history(conn)
-    print(files)
     if files:
         # Crear una nueva ventana para mostrar los archivos públicos
         window_files = tk.Toplevel()
@@ -154,7 +162,7 @@ def show_public_files(conn):
         frame.pack(fill=tk.BOTH, expand=True)
 
         # Crear un Treeview para mostrar los archivos
-        tree = ttk.Treeview(frame, columns=("Nombre", "Propietario", "Visibilidad", "Última Modificación"))
+        tree = ttk.Treeview(frame, columns=("Nombre", "Extensión", "Propietario", "Visibilidad", "Última Modificación"))
 
         # Agregar scrollbars
         y_scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
@@ -169,6 +177,7 @@ def show_public_files(conn):
         # Definir encabezados de columnas
         tree.heading("#0", text="ID")
         tree.heading("Nombre", text="Nombre")
+        tree.heading("Extensión", text="Extensión")
         tree.heading("Propietario", text="Propietario")
         tree.heading("Visibilidad", text="Visibilidad")
         tree.heading("Última Modificación", text="Última Modificación")
@@ -176,79 +185,105 @@ def show_public_files(conn):
         # Definir anchuras de columnas
         tree.column("#0", width=350)
         tree.column("Nombre", width=200)
+        tree.column("Extensión", width=100)  # Ancho ajustable según la extensión
         tree.column("Propietario", width=150)
         tree.column("Visibilidad", width=100)
         tree.column("Última Modificación", width=200)
 
-        # Insertar datos en el treeview
+    if files:
         for file in files:
+            print(file)
+            # Obtener la extensión del archivo si está disponible
+            extension = file["extension"].split(".")[-1] if "." in file["extension"] else ""
             tree.insert("", tk.END, text=file["id"], values=(
                 file["name"],
+                extension,
                 file["owner"],
-                file["visibility"],
-                file["last_modified"]
+                file.get("visibility", "Desconocido"),
+                file.get("last_modified", "Desconocida")
             ))
 
     else:
         tk.messagebox.showinfo("Listar archivos", "No se encontraron archivos públicos en Google Drive")
 
 
-def change_visibility(conn):
-    files = db.list_files_from_db(conn)
-    if files:
-        window_files = tk.Toplevel()
-        window_files.title("Archivos en Google Drive")
-        window_files.geometry("800x400")  # Establecer tamaño inicial de la ventana
+def change_visibility(service):
+    try:
+        # Obtener archivos y carpetas de Google Drive
+        files = db.list_files_from_google_drive(service)
 
-        # Crear un Frame contenedor
-        frame = ttk.Frame(window_files)
-        frame.pack(fill=tk.BOTH, expand=True)
+        if files:
+            window_files = tk.Toplevel()
+            window_files.title("Archivos en Google Drive")
+            window_files.geometry("800x400")  # Establecer tamaño inicial de la ventana
 
-        # Crear un treeview para mostrar los archivos con opción de selección
-        tree = ttk.Treeview(frame, columns=("Nombre", "Propietario", "Visibilidad", "Última Modificación"),
-                            selectmode="browse")
+            # Crear un Frame contenedor
+            frame = ttk.Frame(window_files)
+            frame.pack(fill=tk.BOTH, expand=True)
 
-        # Encabezados de las columnas
-        tree.heading("#0", text="ID")
-        tree.column("#0", width=100, stretch=tk.NO)
-        tree.heading("Nombre", text="Nombre")
-        tree.column("Nombre", width=200, anchor=tk.W, stretch=tk.YES)
-        tree.heading("Propietario", text="Propietario")
-        tree.column("Propietario", width=150, anchor=tk.W, stretch=tk.YES)
-        tree.heading("Visibilidad", text="Visibilidad")
-        tree.column("Visibilidad", width=100, anchor=tk.W, stretch=tk.YES)
-        tree.heading("Última Modificación", text="Última Modificación")
-        tree.column("Última Modificación", width=150, anchor=tk.W, stretch=tk.YES)
+            # Crear un treeview para mostrar los archivos con opción de selección
+            tree = ttk.Treeview(frame, columns=("Nombre", "Propietario", "Visibilidad", "Última Modificación"),
+                                selectmode="browse")
 
-        for file in files:
-            tree.insert("", "end", text=file['id'],
-                        values=(file['name'], file['owner'], file['visibility'], file['last_modified']))
+            # Encabezados de las columnas
+            tree.heading("#0", text="ID")
+            tree.column("#0", width=100, stretch=tk.NO)
+            tree.heading("Nombre", text="Nombre")
+            tree.column("Nombre", width=200, anchor=tk.W, stretch=tk.YES)
+            tree.heading("Propietario", text="Propietario")
+            tree.column("Propietario", width=150, anchor=tk.W, stretch=tk.YES)
+            tree.heading("Visibilidad", text="Visibilidad")
+            tree.column("Visibilidad", width=100, anchor=tk.W, stretch=tk.YES)
+            tree.heading("Última Modificación", text="Última Modificación")
+            tree.column("Última Modificación", width=150, anchor=tk.W, stretch=tk.YES)
 
-        tree.pack(fill=tk.BOTH, expand=True)
+            for file in files:
+                tree.insert("", "end", text=file['id'],
+                            values=(file['name'], file['owners'], file['visibility'], file['modifiedTime']))
 
-        # Definir evento de doble clic
-        def on_double_click(event):
-            item = tree.selection()[0]
-            selected_file_id = tree.item(item, "text")
-            selected_file_name = tree.item(item, "values")[0]
-            print("Doble clic en archivo:", selected_file_id, selected_file_name)
+            tree.pack(fill=tk.BOTH, expand=True)
 
-            # Cambiar la visibilidad del archivo seleccionado a privado en la base de datos
-            try:
-                cursor = conn.cursor()
-                cursor.execute("UPDATE files SET visibility = 'private' WHERE id = %s", (selected_file_id,))
-                conn.commit()
-                print(f"Visibilidad del archivo '{selected_file_name}' cambiada a privado.")
-                cursor.close()
+            # Definir evento de doble clic
+            def on_double_click(event):
+                item = tree.selection()[0]
+                selected_file_id = tree.item(item, "text")
+                selected_file_name = tree.item(item, "values")[0]
+                print("Doble clic en archivo:", selected_file_id, selected_file_name)
 
-                # Actualizar la lista después del cambio
-                window_files.destroy()  # Cerrar la ventana actual
-                show_files(conn)  # Mostrar la lista actualizada
-            except Exception as e:
-                print("Error al cambiar la visibilidad del archivo:", e)
-                conn.rollback()
+                # Cambiar la visibilidad del archivo seleccionado a privado en Google Drive
+                try:
+                    # Obtener el archivo seleccionado
+                    selected_file = next((f for f in files if f['id'] == selected_file_id), None)
+                    if selected_file:
+                        # Verificar si la visibilidad actual es pública
+                        if selected_file['visibility'] == 'public':
+                            # Cambiar la visibilidad del archivo a privado
+                            selected_file['visibility'] = 'private'
 
-        tree.bind("<Double-1>", on_double_click)
+                            # Actualizar la visibilidad del archivo en Google Drive
+                            updated_file = service.files().update(
+                                fileId=selected_file_id,
+                                body={'visibility': 'private'},
+                                fields='id'
+                            ).execute()
 
-    else:
-        tk.messagebox.showinfo("Listar archivos", "No se encontraron archivos en Google Drive")
+                            # Verificar si la actualización fue exitosa
+                            if updated_file.get('id') == selected_file_id:
+                                print(f"Visibilidad del archivo '{selected_file_name}' cambiada a privado.")
+                                # Actualizar la lista después del cambio
+                                window_files.destroy()  # Cerrar la ventana actual
+                                change_visibility(service)  # Mostrar la lista actualizada
+                            else:
+                                print(f"Error al cambiar la visibilidad del archivo '{selected_file_name}'.")
+
+                except Exception as e:
+                    print("Error al cambiar la visibilidad del archivo:", e)
+
+            tree.bind("<Double-1>", on_double_click)
+
+        else:
+            tk.messagebox.showinfo("Listar archivos", "No se encontraron archivos en Google Drive")
+
+    except Exception as e:
+        print("Error al obtener archivos desde Google Drive:", e)
+
