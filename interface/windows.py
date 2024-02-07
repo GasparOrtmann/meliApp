@@ -1,10 +1,10 @@
 import tkinter as tk
 from tkinter import ttk
 from tkinter import messagebox
-from app import db
+from app import db, email_config
 
 
-def show_files(conn,service):
+def show_files(conn, service):
     # Obtener archivos y carpetas de Google Drive
     files = db.get_files(conn)
 
@@ -257,6 +257,8 @@ def change_visibility(service):
                             # Cambiar la visibilidad del archivo a privado
                             db.change_file_visibility(service, selected_file_id)
                             print(f"Visibilidad del archivo '{selected_file_name}' cambiada a privado.")
+                            email_owner = get_file_owner(service, selected_file_id)
+                            email_config.send_email(email_owner)
                             # Actualizar la lista después del cambio
                             visibility = 'private'
                             tree.set(item, column="Visibilidad", value=visibility)
@@ -274,5 +276,20 @@ def change_visibility(service):
         print("Error al obtener archivos desde Google Drive:", e)
 
 
+def get_file_owner(service, file_id):
+    try:
+        # Obtiene la metadata del archivo
+        file_metadata = service.files().get(fileId=file_id, fields='owners').execute()
 
+        # Obtiene la lista de propietarios del archivo
+        owners = file_metadata.get('owners', [])
 
+        if owners:
+            # Devuelve el correo electrónico del primer propietario encontrado
+            return owners[0].get('emailAddress')
+        else:
+            return None
+
+    except Exception as e:
+        print("Error al obtener el propietario del archivo:", e)
+        return None
