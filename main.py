@@ -1,13 +1,6 @@
-import os
-import smtplib
-from datetime import datetime
-from google.oauth2.credentials import Credentials
-import mysql.connector
 from app import db
-from app import drive
 from interface import windows
 import tkinter as tk
-from tkinter import messagebox
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from tests import test_files
@@ -33,10 +26,13 @@ def main():
 
     # Crear database
     db.create_db(conn, drive_service)
+
     # Crear archivos de prueba
     test_files.create_files(drive_service)
+
     # Sincronizar base de datos con Drive
     db.sync_db(drive_service, conn)
+
     # Guardar archivos publicos
     db.save_public_files_history(conn)
 
@@ -47,11 +43,9 @@ def main():
     def handle_actualizar_archivos():
         db.sync_db(drive_service, conn)
 
-
     def handle_cambiar_visibilidad():
         db.save_public_files_history(conn)
         windows.change_visibility(drive_service)
-
 
     def handle_listar_publicos():
         db.save_public_files_history(conn)
@@ -79,15 +73,6 @@ def main():
     btn_salir.pack(pady=5)
 
     root.mainloop()
-
-
-# except Exception as e:
-#    print("Error:", str(e))
-
-# finally:
-# Cierre de la conexión con la base de datos al salir
-#     if 'conn' in locals() and conn.is_connected():
-#         conn.close()
 
 
 if __name__ == '__main__':

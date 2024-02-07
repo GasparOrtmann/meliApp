@@ -2,15 +2,12 @@ import mysql.connector
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 import mysql.connector
-import smtplib
-from email.mime.text import MIMEText
 from datetime import datetime
 import tkinter as tk
 
 
 def authenticate(credentials_file):
     # Autenticación con la API de Google Drive utilizando las credenciales proporcionadas.
-
     creds = Credentials.from_authorized_user_file(credentials_file)
     return build('drive', 'v3', credentials=creds)
 
@@ -58,8 +55,6 @@ def connect_db(host, username, password, database):
             print("Error al conectar a la base de datos: {}".format(err))
             return None
 
-
-import mysql.connector
 
 def create_db(conn, service):
     try:
@@ -115,7 +110,6 @@ def create_db(conn, service):
 
     except mysql.connector.Error as err:
         print("Hubo un error con la creación de la base de datos: ", err)
-
 
 
 def clean_google_drive(service):
@@ -216,7 +210,9 @@ def sync_db(service, conn):
         for file in files:
             file_id = file['id']
             file_name = file['name'].rsplit('.', 1)[0]  # Eliminar la extensión del nombre del archivo
-            file_extension = file['mimeType'].rsplit('/', 1)[1]
+            file_extension = file['mimeType'].rsplit('/', 1)[1]  # Obtiene lo que está después del último '/'
+            if '.' in file_extension:
+                file_extension = file_extension.rsplit('.', 1)[1]  # Obtiene lo que está después del último '.'
             file_owner = file['owners'].split('@')[0]
 
             # Obtener la fecha y hora actual en el formato correcto si 'modifiedTime' está disponible
@@ -287,33 +283,6 @@ def change_file_visibility(service, file_id):
         print(f"Error al cambiar la visibilidad del archivo con ID {file_id}: {e}")
 
 
-def process_public_files(conn):
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM files WHERE visibility = 'public'")
-    public_files = cursor.fetchall()
-
-    if not public_files:
-        print("No se encontraron archivos públicos para modificar.")
-    else:
-        for file in public_files:
-            # Modificar la configuración de visibilidad a "private" en la base de datos
-            try:
-                cursor.execute("UPDATE files SET visibility = 'private' WHERE id = %s", (file['id'],))
-                conn.commit()
-            except Exception as e:
-                print("Error al actualizar la configuración de visibilidad:", e)
-                conn.rollback()
-                continue
-
-            # Enviar un correo electrónico al propietario notificando el cambio realizado
-            owner_email = file['owner_email']
-            subject = "Cambio de visibilidad de archivo en tu unidad de Drive"
-            message = f"Estimado {file['owner']},\n\nEl archivo '{file['name']}' ha sido cambiado de público a privado en tu unidad de Drive."
-            email.send_notification_email(owner_email)
-
-    cursor.close()
-
-
 # Mantener un inventario histórico de archivos públicos
 def save_public_files_history(conn):
     cursor = conn.cursor()
@@ -331,49 +300,3 @@ def save_public_files_history(conn):
             print(f"Error al insertar el archivo {file[1]} en el historial:", err)
             conn.rollback()
     cursor.close()
-
-
-# Listar todos los archivos encontrados en la unidad "My Drive".
-def list_allfiles(service, folder_id='root'):
-    all_files = []
-
-    try:
-        # Consulta específica para obtener archivos y carpetas dentro de una carpeta
-        query = f"'{folder_id}' in parents and trashed=false"
-
-        # Listar archivos y carpetas de Google Drive
-        results = service.files().list(q=query, pageSize=10,
-                                       fields="nextPageToken, files(id, name, mimeType, owners, webViewLink, modifiedTime)").execute()
-        items = results.get('files', [])
-
-        if not items:
-            print(f"No hay archivos en la carpeta con ID: {folder_id}.")
-        else:
-            for item in items:
-                # Determinar el propietario del archivo
-                owner_info = item.get('owners', [{'displayName': 'Propietario_Desconocido'}])
-                owner_name = owner_info[0]['displayName']
-
-                # Determinar la visibilidad del archivo
-                visibility = 'publico' if 'anyoneWithLink' in item.get('webViewLink', '') else 'privado'
-
-                # Obtener la última fecha de modificación del archivo
-                last_modified = item.get('modifiedTime', 'Desconocida')
-
-                # Agregar los campos de propietario, visibilidad y última modificación al diccionario del elemento actual
-                item['owners'] = owner_name
-                item['visibility'] = visibility
-                item['last_modified'] = last_modified
-
-                all_files.append(item)
-
-                # Si el elemento es un directorio, explorar sus archivos de manera recursiva
-                if item['mimeType'] == 'application/vnd.google-apps.folder':
-                    subdirectory_files = list_files_from_google_drive(service, folder_id=item['id'])
-                    all_files.extend(subdirectory_files)
-
-        return all_files
-
-    except Exception as e:
-        print(f"Hubo un error al listar los archivos desde la carpeta con ID {folder_id}:", e)
-        return []
