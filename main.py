@@ -1,21 +1,13 @@
-from app import db
+from app import db, drive
 from interface import windows
 import tkinter as tk
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
 from tests import test_files
 
 
 def main():
 
-    # Cargar la clave de API desde el archivo JSON
-    credentials = service_account.Credentials.from_service_account_file(
-        'app/credentials.json',
-        scopes=['https://www.googleapis.com/auth/drive']
-    )
+    drive_service = drive.drive_service()
 
-    # Construir el servicio de Google Drive
-    drive_service = build('drive', 'v3', credentials=credentials)
 
     # Conexión con la base de datos
     host = "localhost"  # input("Por favor, ingresa el host de la base de datos MySQL: ")
@@ -45,7 +37,7 @@ def main():
 
     def handle_cambiar_visibilidad():
         db.save_public_files_history(conn)
-        windows.change_visibility(drive_service)
+        windows.change_visibility(drive_service, conn)
 
     def handle_listar_publicos():
         db.save_public_files_history(conn)

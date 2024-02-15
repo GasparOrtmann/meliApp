@@ -1,0 +1,16 @@
+setup.py
+app/__init__.py
+app/db.py
+app/drive.py
+app/email_config.py
+interface/__init__.py
+interface/windows.py
+my_project.egg-info/PKG-INFO
+my_project.egg-info/SOURCES.txt
+my_project.egg-info/dependency_links.txt
+my_project.egg-info/top_level.txt
+tests/__init__.py
+tests/test_db.py
+tests/test_drive.py
+tests/test_email.py
+tests/test_files.py
