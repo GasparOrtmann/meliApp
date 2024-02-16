@@ -12,17 +12,17 @@ class TestDriveService(unittest.TestCase):
         mock_credentials = mock_from_service_account_file.return_value
         mock_service = mock_build.return_value
 
-        # Llama a la función que quieres probar
+        # Llamo al google drive service
         result = drive.drive_service()
 
-        # Verifica que se llamen a los métodos y atributos necesarios
+        # Verifico que se llamen los datos necesarios
         mock_from_service_account_file.assert_called_once_with(
             'app/credentials.json',
             scopes=['https://www.googleapis.com/auth/drive']
         )
         mock_build.assert_called_once_with('drive', 'v3', credentials=mock_credentials)
 
-        # Verifica que la función devuelve lo que esperas
+        # Return de la funcion
         self.assertEqual(result, mock_service)
 
 

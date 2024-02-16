@@ -185,8 +185,6 @@ def list_public_files_history(conn):
             return public_files_history
     except mysql.connector.Error as err:
         print("Hubo un error al listar los archivos de la tabla 'public_files_history':", err)
-    finally:
-        cursor.close()
 
 
 def sync_db(service, conn):

@@ -1,3 +1,5 @@
+# Son archivos que se cargan de prueba al Drive al inicar la aplicacion, si ya estan creados no vuelven a crearse.
+
 def create_files(service):
     test_files = [
         {
@@ -45,7 +47,7 @@ def create_files(service):
     for file_data in test_files:
         file_name = file_data['name']
 
-        # Verificar si el archivo ya existe
+        # Verifico si el archivo ya existe
         files = service.files().list(q=f"name='{file_name}'").execute().get('files', [])
 
         if not files:
@@ -64,7 +66,7 @@ def create_files(service):
             file = service.files().create(body=file_metadata, fields='id').execute()
             print(f"Test file created: {file_name} (ID: {file.get('id')})")
 
-            # Si la visibilidad es pública, asignar permisos de lectura
+            # Si la visibilidad es pública se asignan permisos de lectura
             if file_metadata['visibility'] == 'public':
                 permission = {
                     'type': 'anyone',

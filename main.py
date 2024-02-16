@@ -5,9 +5,7 @@ from tests import test_files
 
 
 def main():
-
     drive_service = drive.drive_service()
-
 
     # Conexión con la base de datos
     host = "localhost"  # input("Por favor, ingresa el host de la base de datos MySQL: ")
@@ -30,7 +28,7 @@ def main():
 
     # Menú de opciones
     def handle_listar_archivos():
-        windows.show_files(conn,drive_service)
+        windows.show_files(conn, drive_service)
 
     def handle_actualizar_archivos():
         db.sync_db(drive_service, conn)
